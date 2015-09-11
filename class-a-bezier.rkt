@@ -1,7 +1,8 @@
-;;; Class A Bezier Curve Test
-;;; by Peter Salvi, 2015.09.10.
+;;; Class A Curve Test
+;;; by Peter Salvi, September 2015.
 
-;;; Based on the paper by Yoshida et al. (2008)
+;;; Bezier curves based on the paper by Yoshida et al. (2008)
+;;; LA curves based on the paper by Miura (2006)
 
 #lang racket
 
@@ -12,21 +13,20 @@
 (define point-radius 4)
 (define line-width 0)
 (define resolution 100)
+(define optimization-iterations 100)
+(define epsilon 1e-5)
 
 ;;; Default placements
 (define a0 '(44 340))
 (define a1 '(235 88))
 (define a2 '(586 279))
 
-;;; Options
-(define optimization-iterations 100)
-(define epsilon 1e-5)
-
 ;;; Variables
-(define degree 4)
 (define dragged #f)
+(define degree 4)
 (define show-bezier-cpts? #t)
-(define bezier-cpts '())
+(define alpha -1)
+(define show-lac? #f)
 
 ;;; Basic Maths
 (define (binomial n k)
@@ -49,7 +49,7 @@
          [v (list (- (second u)) (first u))])
     (v+ (v* u (first d)) (v* v (second d)))))
 
-;;; Curves
+;;; Bezier Curve
 
 (define (bezier-eval-one-point points u)
   (let* ([n (- (length points) 1)]
@@ -113,8 +113,6 @@ Uses the Durand-Kerner method."
                         xs)))
         xs)))
 
-;;; for example: (find-polynomial-roots '(-5 3 -3 1))
-
 (define (minimal-imag-part lst)
   (real-part
    (first (sort lst
@@ -171,8 +169,8 @@ Uses also A0 and DEGREE."
       (list u)
       (cons u (generate-rotations (rotate u alpha) alpha (- k 1)))))
 
-(define (recompute-curve)
-  "Generate BEZIER-CPTS based on A0, A1, A2 and DEGREE."
+(define (class-a-bezier-fit)
+  "Generate control points based on A0, A1, A2 and DEGREE."
   (let* ([angle (angle-between (v- a1 a0) (v- a2 a1))]
          [alpha (/ angle (- degree 1))]
          [u (vnormalize (v- a1 a0))]
@@ -181,7 +179,31 @@ Uses also A0 and DEGREE."
          [s (first s-b0)]
          [b0 (second s-b0)]
          [v (v* u b0)])
-    (set! bezier-cpts (generate-bezier-cpts v s alpha))))
+    (generate-bezier-cpts v s alpha)))
+
+;;; LA curve
+
+(define gaussian-quadrature
+  '((-0.861136312 0.347854845) (-0.339981044 0.652145155)
+    (0.339981044 0.652145155) (0.861136312 0.347854845)))
+
+(define (integrate fn a b)
+  (let ([c1 (/ (- b a) 2)]
+        [c2 (/ (+ a b) 2)])
+    (* c1 (apply + (map (lambda (x-w)
+                          (* (second x-w)
+                             (fn (+ (* (first x-w) c1) c2))))
+                        gaussian-quadrature)))))
+
+(define (lac-fit)
+  'todo)
+
+(define (complex->point p)
+  (make-object point% (real-part p) (imag-part p)))
+
+(define (lac-evaluate params)
+  "PARAMS is a list of (P0 C0 C1 C2)."
+  '())
 
 ;;; Graphics
 
@@ -194,19 +216,23 @@ Uses also A0 and DEGREE."
   (send dc draw-line (first p) (second p) (first q) (second q)))
 
 (define (draw canvas dc)
-  (send dc set-pen "GREEN" line-width 'solid)
-  (send dc draw-lines (bezier-evaluate bezier-cpts))
-  (send dc set-pen "BLUE" line-width 'solid)
-  (draw-segment dc a0 a1) (draw-segment dc a1 a2)
-  (unless (or (empty? bezier-cpts) (not show-bezier-cpts?))
-    (send dc set-brush "RED" 'solid)
-    (send dc set-pen "RED" line-width 'solid)
-    (for ([p bezier-cpts] [q (rest bezier-cpts)])
-      (draw-segment dc p q))
-    (for-each (lambda (p) (draw-point dc p)) bezier-cpts))
+  (let ([bezier-cpts (class-a-bezier-fit)])
+    (send dc set-pen "GREEN" line-width 'solid)
+    (send dc draw-lines (bezier-evaluate bezier-cpts))
+    (send dc set-pen "BLUE" line-width 'solid)
+    (draw-segment dc a0 a1) (draw-segment dc a1 a2)
+    (when show-bezier-cpts?
+      (send dc set-brush "RED" 'solid)
+      (send dc set-pen "RED" line-width 'solid)
+      (for ([p bezier-cpts] [q (rest bezier-cpts)])
+        (draw-segment dc p q))
+      (for-each (lambda (p) (draw-point dc p)) bezier-cpts)))
   (send dc set-brush "BLACK" 'solid)
   (send dc set-pen "BLACK" line-width 'solid)
-  (for-each (lambda (p) (draw-point dc p)) (list a0 a1 a2)))
+  (for-each (lambda (p) (draw-point dc p)) (list a0 a1 a2))
+  (when show-lac?
+    (send dc set-pen "MAGENTA" line-width 'solid)
+    (send dc draw-lines (lac-evaluate (lac-fit)))))
 
 ;;; GUI
 
@@ -214,9 +240,9 @@ Uses also A0 and DEGREE."
   (if dragged
       (let ([p (list (send event get-x) (send event get-y))])
         (case dragged
-          [(0) (set! a0 p) (recompute-curve)]
-          [(1) (set! a1 p) (recompute-curve)]
-          [(2) (set! a2 p) (recompute-curve)])
+          [(0) (set! a0 p)]
+          [(1) (set! a1 p)]
+          [(2) (set! a2 p)])
         #t)
     #f))
 
@@ -251,30 +277,35 @@ Uses also A0 and DEGREE."
                     [min-width 640] [min-height 480]
                     [paint-callback draw])]
        [hbox1 (new horizontal-pane% [parent vbox])]
-       [label (new message% [label ""] [parent hbox1]
-                   [auto-resize #t])]
-       [set-label (lambda ()
-                    (send label set-label
-                          (string-append "Degree: "
-                                         (number->string degree))))]
-       [slider-tmp #f]
-       [slider (new slider% [label ""] [min-value 3] [max-value 12] [parent hbox1]
-                    [init-value degree] [style '(horizontal plain)]
-                    [min-width 200] [stretchable-width #f]
-                    [callback (lambda (c e)
-                                (set! degree (send slider-tmp get-value))
-                                (set-label)
-                                (recompute-curve)
-                                (send canvas refresh))])])
+       [hbox2 (new horizontal-pane% [parent vbox])])
   (let-syntax ([add-option (syntax-rules ()
 			     [(_ var a-label box)
 			      (new check-box% [parent box]
                                    [label a-label] [value var]
 				   [callback (lambda (c e)
 					       (set! var (not var))
-					       (send canvas refresh))])])])
-    (add-option show-bezier-cpts? "Bezier control points" hbox1))
-  (set! slider-tmp slider)
-  (set-label)
-  (recompute-curve)
+					       (send canvas refresh))])])]
+               [add-slider (syntax-rules ()
+                             [(_ var a-label box a-min a-max)
+                              (let* ([label (new message% [label ""] [parent box]
+                                                 [auto-resize #t])]
+                                     [set-label (lambda ()
+                                                  (send label set-label
+                                                        (string-append a-label
+                                                                       (number->string var))))]
+                                     [slider-tmp #f]
+                                     [slider (new slider% [label ""] [parent box]
+                                                  [min-value a-min] [max-value a-max]
+                                                  [init-value var] [style '(horizontal plain)]
+                                                  [min-width 200] [stretchable-width #f]
+                                                  [callback (lambda (c e)
+                                                              (set! var (send slider-tmp get-value))
+                                                              (set-label)
+                                                              (send canvas refresh))])])
+                                (set! slider-tmp slider)
+                                (set-label))])])
+    (add-slider degree "Degree: " hbox1 3 12)
+    (add-option show-bezier-cpts? "Bezier control points" hbox1)
+    (add-slider alpha "Alpha: " hbox2 -1 2)
+    (add-option show-lac? "Log-aesthetic curve" hbox2))
   (send frame show #t))

@@ -19,8 +19,8 @@
 (define a2 '(586 279))
 
 ;;; Options
-(define optimization-iterations 50)
-(define epsilon 1e-8)
+(define optimization-iterations 100)
+(define epsilon 1e-5)
 
 ;;; Variables
 (define degree 4)
@@ -40,10 +40,6 @@
 (define (vnormalize u) (v* u (/ (vlength u))))
 (define (point-distance p q) (vlength (v- q p)))
 (define (scalar-product u v) (apply + (map * u v)))
-(define (cross-product u v)
-  (list (- (* (second u) (third v)) (* (third u) (second v)))
-	(- (* (third u) (first v)) (* (first u) (third v)))
-	(- (* (first u) (second v)) (* (second u) (first v)))))
 (define (to-system u d)
   (let* ([u (vnormalize u)]
          [v (list (- (second u)) (first u))])
@@ -78,13 +74,14 @@
     (list (- (* c x) (* s y))
           (+ (* s x) (* c y)))))
 
+(define (clockwise? u v)
+  (< (- (* (first u) (second v)) (* (second u) (first v)))
+     0))
+
 (define (angle-between u v)
   (* (acos (min 1 (max -1 (scalar-product (vnormalize u)
                                           (vnormalize v)))))
-     (let ([cross (cross-product (append u '(0)) (append v '(0)))])
-       (if (< (scalar-product '(0 0 1) cross) 0)
-         -1
-         1))))
+     (if (clockwise? u v) -1 1)))
 
 (define (evaluate-polynomial as x)
   (if (empty? as)
@@ -104,22 +101,31 @@
   "Given a list of numbers (a0 a1 a2 ... an-1),
 find x such that sum ai * x^i = 0.
 Uses the Durand-Kerner method."
-  (let* ([n (- (length as) 1)]
-         [xs (for/list ([i (range n)])
-               (expt 0.4+0.9i i))]) ; random complex number
-    (for ([i (range optimization-iterations)])
-      (set! xs (map (lambda (x)
-                      (- x (/ (evaluate-polynomial as x)
-                              (multiply-all-but xs x))))
-                    xs)))
-    xs))
+  (if (< (last as) 0)
+      (find-polynomial-roots (map - as))
+      (let* ([n (- (length as) 1)]
+             [xs (for/list ([i (range n)])
+                   (expt 0.4+0.9i i))]) ; random complex number
+        (for ([i (range optimization-iterations)])
+          (set! xs (map (lambda (x)
+                          (- x (/ (evaluate-polynomial as x)
+                                  (multiply-all-but xs x))))
+                        xs)))
+        xs)))
 
 ;;; for example: (find-polynomial-roots '(-5 3 -3 1))
 
-(define (closest-to-one lst)
+(define (minimal-imag-part lst)
+  (real-part
+   (first (sort lst
+                (lambda (x y)
+                  (< (abs (imag-part x))
+                     (abs (imag-part y))))))))
+
+(define (closest-to-zero as lst)
   (first (sort lst (lambda (x y)
-                     (< (abs (- (abs x) 1))
-                        (abs (- (abs y) 1)))))))
+                     (< (abs (evaluate-polynomial as x))
+                        (abs (evaluate-polynomial as x)))))))
 
 (define (find-polynomial-root as)
   "Choose one root, that is real and positive."
@@ -128,10 +134,8 @@ Uses the Durand-Kerner method."
          [zs (map real-part ys)]
          [ws (filter (lambda (z) (> z 0)) zs)])
     (if (empty? ws)
-        (if (empty? zs)
-            1 ; kutykurutty
-            (closest-to-one zs))
-        (closest-to-one ws))))
+        (minimal-imag-part xs) ; kutykurutty
+        (closest-to-zero as ws))))
 
 (define (other-end coeffs s)
   (define (rec vs i)
@@ -157,8 +161,8 @@ Note that all coefficients and the target are two-dimensional."
   "Generates the Bezier control points.
 Uses also A0 and DEGREE."
   (define (rec i p u)
-    (if (> i degree)
-        '()
+    (if (= i degree)
+        (list p)
         (cons p (rec (+ i 1) (v+ p u) (v* (rotate u alpha) s)))))
   (rec 0 a0 v))
 
@@ -169,7 +173,8 @@ Uses also A0 and DEGREE."
 
 (define (recompute-curve)
   "Generate BEZIER-CPTS based on A0, A1, A2 and DEGREE."
-  (let* ([alpha (/ (angle-between (v- a1 a0) (v- a2 a1)) (- degree 1))]
+  (let* ([angle (angle-between (v- a1 a0) (v- a2 a1))]
+         [alpha (/ angle (- degree 1))]
          [u (vnormalize (v- a1 a0))]
          [vs (generate-rotations u alpha degree)]
          [s-b0 (optimize vs (v- a2 a0))]

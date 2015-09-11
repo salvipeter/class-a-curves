@@ -195,15 +195,35 @@ Uses also A0 and DEGREE."
                              (fn (+ (* (first x-w) c1) c2))))
                         gaussian-quadrature)))))
 
-(define (lac-fit)
-  'todo)
-
 (define (complex->point p)
   (make-object point% (real-part p) (imag-part p)))
 
+(define (point->complex p)
+  (+ (first p) (* 0+1i (second p))))
+
+(define (lac-fit)
+  (cons (point->complex a0)
+        '(2+.3i 0 0 300)))
+
+(define (lac-eval-one-point params s-to)
+  (let* ([p0 (first params)]
+         [c0 (second params)]
+         [c1 (third params)]
+         [c2 (fourth params)]
+         [h (fifth params)]
+         [theta (lambda (s)
+                  (+ (/ (* alpha (expt (+ (* c0 s) c1)
+                                     (/ (- alpha 1) alpha)))
+                      (* (- alpha 1) c0))
+                   c2))]
+         [integrand (lambda (s) (exp (* 0+1i (theta s))))])
+    (+ p0 (* h (integrate integrand 0 s-to)))))
+
 (define (lac-evaluate params)
-  "PARAMS is a list of (P0 C0 C1 C2)."
-  '())
+  "PARAMS is a list of (P0 C0 C1 C2 LENGTH)."
+  (let* ([s (for/list ([i (range resolution)]) (/ i (- resolution 1)))]
+         [points (map (lambda (x) (lac-eval-one-point params x)) s)])
+    (map complex->point points)))
 
 ;;; Graphics
 
@@ -227,12 +247,12 @@ Uses also A0 and DEGREE."
       (for ([p bezier-cpts] [q (rest bezier-cpts)])
         (draw-segment dc p q))
       (for-each (lambda (p) (draw-point dc p)) bezier-cpts)))
-  (send dc set-brush "BLACK" 'solid)
-  (send dc set-pen "BLACK" line-width 'solid)
-  (for-each (lambda (p) (draw-point dc p)) (list a0 a1 a2))
   (when show-lac?
     (send dc set-pen "MAGENTA" line-width 'solid)
-    (send dc draw-lines (lac-evaluate (lac-fit)))))
+    (send dc draw-lines (lac-evaluate (lac-fit))))
+  (send dc set-brush "BLACK" 'solid)
+  (send dc set-pen "BLACK" line-width 'solid)
+  (for-each (lambda (p) (draw-point dc p)) (list a0 a1 a2)))
 
 ;;; GUI
 
@@ -286,7 +306,7 @@ Uses also A0 and DEGREE."
 					       (set! var (not var))
 					       (send canvas refresh))])])]
                [add-slider (syntax-rules ()
-                             [(_ var a-label box a-min a-max)
+                             [(_ var a-label box a-min a-max from-int to-int)
                               (let* ([label (new message% [label ""] [parent box]
                                                  [auto-resize #t])]
                                      [set-label (lambda ()
@@ -295,17 +315,20 @@ Uses also A0 and DEGREE."
                                                                        (number->string var))))]
                                      [slider-tmp #f]
                                      [slider (new slider% [label ""] [parent box]
-                                                  [min-value a-min] [max-value a-max]
-                                                  [init-value var] [style '(horizontal plain)]
+                                                  [min-value (to-int a-min)]
+                                                  [max-value (to-int a-max)]
+                                                  [init-value (to-int var)]
+                                                  [style '(horizontal plain)]
                                                   [min-width 200] [stretchable-width #f]
                                                   [callback (lambda (c e)
-                                                              (set! var (send slider-tmp get-value))
+                                                              (let ([v (send slider-tmp get-value)])
+                                                                (set! var (+ 0.0 (from-int v))))
                                                               (set-label)
                                                               (send canvas refresh))])])
                                 (set! slider-tmp slider)
                                 (set-label))])])
-    (add-slider degree "Degree: " hbox1 3 12)
+    (add-slider degree "Degree: " hbox1 3 12 identity identity)
     (add-option show-bezier-cpts? "Bezier control points" hbox1)
-    (add-slider alpha "Alpha: " hbox2 -1 2)
+    (add-slider alpha "Alpha: " hbox2 -1 2 (lambda (x) (/ x 10)) (lambda (x) (* x 10)))
     (add-option show-lac? "Log-aesthetic curve" hbox2))
   (send frame show #t))

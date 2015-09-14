@@ -2,7 +2,7 @@
 ;;; by Peter Salvi, September 2015.
 
 ;;; Bezier curves based on the paper by Yoshida et al. (2008)
-;;; LA curves based on the paper by Miura (2006)
+;;; LA curves based on the paper by Miura (2006) and Yoshida (2006)
 
 #lang racket
 
@@ -196,34 +196,117 @@ Uses also A0 and DEGREE."
                         gaussian-quadrature)))))
 
 (define (complex->point p)
+  (list (real-part p) (imag-part p)))
+
+(define (complex->canvas-point p)
   (make-object point% (real-part p) (imag-part p)))
 
 (define (point->complex p)
   (+ (first p) (* 0+1i (second p))))
 
-(define (lac-fit)
-  (cons (point->complex a0)
-        '(2+.3i 0 0 300)))
+(define (compute-theta-ef l theta-d)
+  "Compute THETA-E given Lambda of a Standard Form II curve."
+  (let ([tri (compute-triangle l theta-d)])
+    (angle-between (complex->point (- (second tri) (first tri)))
+                   (complex->point (- (third tri) (first tri))))))
 
-(define (lac-eval-one-point params s-to)
+(define (bisection theta-d theta-e theta-f)
+  "As in Appendix A of Yoshida'06."
+  (let ([enlarge (= alpha 1)])
+    (define (rec lmin lmax i)
+      (let ([l (/ (+ lmin lmax) 2)])
+        (if (= i 0)
+            l ; not found - return best estimate
+            (let ([f (if (<= alpha 1)
+                         (- theta-e (compute-theta-ef l theta-d))
+                         (- theta-f (compute-theta-ef l theta-d)))])
+              (cond [(< (abs f) epsilon) l]
+                    [(or (and (< f 0) (<= alpha 1))
+                         (and (> f 0) (> alpha 1)))
+                     (rec l (if enlarge (* lmax 10) lmax) (- i 1))]
+                    [else
+                     (set! enlarge #f)
+                     (rec lmin l (- i 1))])))))
+    (let ([lmax (cond [(< alpha 1) (/ (* theta-d (- 1 alpha)))]
+                      [(> alpha 1) (/ (* -1 theta-d (- 1 alpha)))]
+                      [else 1])])
+      (rec 0 lmax optimization-iterations))))
+
+(define (map-points tri)
+  "Returns a mapping that maps this triangle to A0,A1,A2."
+  (lambda (p)
+    (+ (point->complex a0) (* 100 p))))
+
+(define (theta-d->s l theta)
+  (case alpha
+    [(0) (* (- l) (log (- 1 theta)))]
+    [(1) (/ (- (exp (* theta l)) 1) l)]
+    [else (/ (- (expt (+ (* theta l (- alpha 1)) 1)
+                      (/ alpha (- alpha 1)))
+                1)
+             (* l alpha))]))
+
+(define (compute-triangle l theta-d)
+  (let* ([p0 0]
+         [p2 (lac-eval-one-point-yoshida l 0 (theta-d->s l theta-d))]
+         [eith (exp (* 0+1i theta-d))]
+         [gamma (- (/ (imag-part p2) (imag-part eith)))]
+         [p1 (real-part (+ p2 (* eith gamma)))]) ; intersection of P0P1 and P1P2
+    (list p0 p1 p2)))
+
+(define (lac-fit)
+  "Returns (L MAPPING S-FROM S-TO)."
+  (let* ([theta-d (angle-between (v- a1 a0) (v- a2 a1))]
+         [theta-e (angle-between (v- a1 a0) (v- a2 a0))]
+         [theta-f (angle-between (v- a1 a2) (v- a0 a2))]
+         [l (bisection theta-d theta-e theta-f)]
+         [tri (compute-triangle l theta-d)])
+    (if (> alpha 1)
+        (list l (map-points (reverse tri)) (- theta-d) 0)
+        (list l (map-points tri) 0 theta-d))))
+
+(define (lac-eval-one-point-miura params s-from s-to)
+  "Does not work in this form for alpha=0,1. Not used now."
   (let* ([p0 (first params)]
          [c0 (second params)]
          [c1 (third params)]
          [c2 (fourth params)]
-         [h (fifth params)]
          [theta (lambda (s)
                   (+ (/ (* alpha (expt (+ (* c0 s) c1)
-                                     (/ (- alpha 1) alpha)))
-                      (* (- alpha 1) c0))
-                   c2))]
+                                       (/ (- alpha 1) alpha)))
+                        (* (- alpha 1) c0))
+                     c2))]
          [integrand (lambda (s) (exp (* 0+1i (theta s))))])
-    (+ p0 (* h (integrate integrand 0 s-to)))))
+    (+ p0 (integrate integrand s-from s-to))))
+
+(define (lac-eval-one-point-yoshida l s-from s-to)
+  (let* ([theta (lambda (s)
+                  (case alpha
+                    [(0) (- 1 (exp (* -1 l s)))]
+                    [(1) (/ (log (+ (* l s) 1)) l)]
+                    [else (/ (- (expt (+ (* l alpha s) 1)
+                                      (- 1 (/ alpha)))
+                                1)
+                             (* l (- alpha 1)))]))]
+         [integrand (lambda (s) (exp (* 0+1i (theta s))))])
+    (integrate integrand s-from s-to)))
 
 (define (lac-evaluate params)
-  "PARAMS is a list of (P0 C0 C1 C2 LENGTH)."
-  (let* ([s (for/list ([i (range resolution)]) (/ i (- resolution 1)))]
-         [points (map (lambda (x) (lac-eval-one-point params x)) s)])
-    (map complex->point points)))
+  "PARAMS is a list of (L MAPPING S-FROM S-TO)."
+  (let ([pa (point->complex a0)]
+        [pb (point->complex a1)]
+        [pc (point->complex a2)])
+    (when (> (magnitude (* pa pb)) (magnitude (* pb pc)))
+      (set! a0 (complex->point pc))
+      (set! a2 (complex->point pa))))
+  (let* ([l (first params)]
+         [mapping (second params)]
+         [s-from (third params)]
+         [s-to (fourth params)]
+         [s (for/list ([i (range resolution)])
+              (+ s-from (* (- s-to s-from) (/ i (- resolution 1)))))]
+         [points (map (lambda (x) (lac-eval-one-point-yoshida l s-from x)) s)])
+    (map complex->canvas-point (map mapping points))))
 
 ;;; Graphics
 

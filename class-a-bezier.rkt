@@ -7,6 +7,7 @@
 #lang racket
 
 ;;; Libraries
+(require math/matrix)
 (require racket/gui)
 
 ;;; Parameters
@@ -234,8 +235,20 @@ Uses also A0 and DEGREE."
 
 (define (map-points tri)
   "Returns a mapping that maps this triangle to A0,A1,A2."
-  (lambda (p)
-    (+ (point->complex a0) (* 100 p))))
+  (let* ([b0 (list (real-part (first tri)) (imag-part (first tri)))]
+         [b1 (list (real-part (second tri)) (imag-part (second tri)))]
+         [b2 (list (real-part (third tri)) (imag-part (third tri)))]
+         [M (list*->matrix (list (list (first b0) (first b1) (first b2))
+                                 (list (second b0) (second b1) (second b2))
+                                 '(1 1 1)))]
+         [A (matrix* (list*->matrix (list (list (first a0) (first a1) (first a2))
+                                          (list (second a0) (second a1) (second a2))
+                                          '(1 1 1)))
+                     (matrix-inverse M))])
+    (lambda (p)
+      (let* ([v (->col-matrix (list (real-part p) (imag-part p) 1))]
+             [q (matrix* A v)])
+        (+ (matrix-ref q 0 0) (* 0+1i (matrix-ref q 1 0)))))))
 
 (define (theta-d->s l theta)
   (case alpha
@@ -259,7 +272,7 @@ Uses also A0 and DEGREE."
   (let* ([theta-d (angle-between (v- a1 a0) (v- a2 a1))]
          [theta-e (angle-between (v- a1 a0) (v- a2 a0))]
          [theta-f (angle-between (v- a1 a2) (v- a0 a2))]
-         [l (bisection theta-d theta-e theta-f)]
+         [l 0.3];(bisection theta-d theta-e theta-f)]
          [tri (compute-triangle l theta-d)])
     (if (> alpha 1)
         (list l (map-points (reverse tri)) (- theta-d) 0)

@@ -200,6 +200,9 @@ Uses also A0 and DEGREE."
                              (fn (+ (* (first x-w) c1) c2))))
                         gaussian-quadrature)))))
 
+(define (special?)
+  (or (> alpha 1) (= alpha 0)))
+
 (define (complex->point p)
   (list (real-part p) (imag-part p)))
 
@@ -226,15 +229,15 @@ Uses also A0 and DEGREE."
                          (- theta-e (compute-theta-ef l theta-d))
                          (- theta-f (compute-theta-ef l theta-d)))])
               (cond [(< (abs f) epsilon) l]
-                    [(or (and (> f 0) (<= alpha 1))
-                         (and (< f 0) (> alpha 1)))
+                    [(or (and (> f 0) (not (special?)))
+                         (and (< f 0) (special?)))
                      (rec l (if enlarge (* lmax 10) lmax) (- i 1))]
                     [else
                      (set! enlarge #f)
                      (rec lmin l (- i 1))])))))
-    (let ([lmax (cond [(< alpha 1) (/ (* theta-d (- 1 alpha)))]
-                      [(> alpha 1) (/ (* -1 theta-d (- 1 alpha)))]
-                      [else 1])])
+    (let ([lmax (cond [(= alpha 1) 1]
+                      [(special?) (/ (* -1 theta-d (- 1 alpha)))]
+                      [else (/ (* theta-d (- 1 alpha)))])])
       (rec 0 lmax bisection-iterations))))
 
 (define (map-points tri)
@@ -268,14 +271,14 @@ Uses also A0 and DEGREE."
          [eith (exp (* 0+1i theta-d))]
          [gamma (- (/ (imag-part p2) (imag-part eith)))]
          [p1 (real-part (+ p2 (* eith gamma)))]) ; intersection of P0P1 and P1P2
-    (if (> alpha 1)
+    (if (special?)
         (list p2 p1 p0)
         (list p0 p1 p2))))
 
 (define (lac-fit)
   "Returns (L MAPPING S-FROM S-TO)."
   (let* ([theta-d (angle-between-nosign (v- a1 a0) (v- a2 a1))]
-         [theta-d (if (> alpha 1) (- theta-d) theta-d)]
+         [theta-d (if (special?) (- theta-d) theta-d)]
          [theta-e (angle-between-nosign (v- a1 a0) (v- a2 a0))]
          [theta-f (angle-between-nosign (v- a1 a2) (v- a0 a2))]
          [l (bisection theta-d theta-e theta-f)]

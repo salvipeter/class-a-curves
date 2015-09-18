@@ -268,18 +268,19 @@ Uses also A0 and DEGREE."
          [eith (exp (* 0+1i theta-d))]
          [gamma (- (/ (imag-part p2) (imag-part eith)))]
          [p1 (real-part (+ p2 (* eith gamma)))]) ; intersection of P0P1 and P1P2
-    (list p0 p1 p2)))
+    (if (> alpha 1)
+        (list p2 p1 p0)
+        (list p0 p1 p2))))
 
 (define (lac-fit)
   "Returns (L MAPPING S-FROM S-TO)."
   (let* ([theta-d (angle-between-nosign (v- a1 a0) (v- a2 a1))]
+         [theta-d (if (> alpha 1) (- theta-d) theta-d)]
          [theta-e (angle-between-nosign (v- a1 a0) (v- a2 a0))]
          [theta-f (angle-between-nosign (v- a1 a2) (v- a0 a2))]
          [l (bisection theta-d theta-e theta-f)]
          [tri (compute-triangle l theta-d)])
-    (if (> alpha 1)
-        (list l (map-points (reverse tri)) (theta-d->s l (- theta-d)) 0)
-        (list l (map-points tri) 0 (theta-d->s l theta-d)))))
+    (list l (map-points tri) 0 (theta-d->s l theta-d))))
 
 (define (lac-eval-one-point-miura params s-from s-to)
   "Does not work in this form for alpha=0,1. Not used now."

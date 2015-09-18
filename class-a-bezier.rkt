@@ -15,6 +15,7 @@
 (define line-width 0)
 (define resolution 100)
 (define optimization-iterations 100)
+(define bisection-iterations 10)
 (define epsilon 1e-5)
 
 ;;; Default placements
@@ -206,7 +207,7 @@ Uses also A0 and DEGREE."
   (+ (first p) (* 0+1i (second p))))
 
 (define (compute-theta-ef l theta-d)
-  "Compute THETA-E given Lambda of a Standard Form II curve."
+  "Compute THETA-E / THETA-F given Lambda of a Standard Form II curve."
   (let ([tri (compute-triangle l theta-d)])
     (angle-between (complex->point (- (second tri) (first tri)))
                    (complex->point (- (third tri) (first tri))))))
@@ -222,8 +223,8 @@ Uses also A0 and DEGREE."
                          (- theta-e (compute-theta-ef l theta-d))
                          (- theta-f (compute-theta-ef l theta-d)))])
               (cond [(< (abs f) epsilon) l]
-                    [(or (and (< f 0) (<= alpha 1))
-                         (and (> f 0) (> alpha 1)))
+                    [(or (and (> f 0) (<= alpha 1))
+                         (and (< f 0) (> alpha 1)))
                      (rec l (if enlarge (* lmax 10) lmax) (- i 1))]
                     [else
                      (set! enlarge #f)
@@ -231,7 +232,7 @@ Uses also A0 and DEGREE."
     (let ([lmax (cond [(< alpha 1) (/ (* theta-d (- 1 alpha)))]
                       [(> alpha 1) (/ (* -1 theta-d (- 1 alpha)))]
                       [else 1])])
-      (rec 0 lmax optimization-iterations))))
+      (rec 0 lmax bisection-iterations))))
 
 (define (map-points tri)
   "Returns a mapping that maps this triangle to A0,A1,A2."
@@ -254,7 +255,7 @@ Uses also A0 and DEGREE."
   (case alpha
     [(0) (* (- l) (log (- 1 theta)))]
     [(1) (/ (- (exp (* theta l)) 1) l)]
-    [else (/ (- (expt (+ (* theta l (- alpha 1)) 1)
+    [else (/ (- (expt (+ 1 (* theta l (- alpha 1)))
                       (/ alpha (- alpha 1)))
                 1)
              (* l alpha))]))
@@ -272,11 +273,11 @@ Uses also A0 and DEGREE."
   (let* ([theta-d (angle-between (v- a1 a0) (v- a2 a1))]
          [theta-e (angle-between (v- a1 a0) (v- a2 a0))]
          [theta-f (angle-between (v- a1 a2) (v- a0 a2))]
-         [l 0.3];(bisection theta-d theta-e theta-f)]
+         [l (bisection theta-d theta-e theta-f)]
          [tri (compute-triangle l theta-d)])
     (if (> alpha 1)
-        (list l (map-points (reverse tri)) (- theta-d) 0)
-        (list l (map-points tri) 0 theta-d))))
+        (list l (map-points (reverse tri)) (theta-d->s l (- theta-d)) 0)
+        (list l (map-points tri) 0 (theta-d->s l theta-d)))))
 
 (define (lac-eval-one-point-miura params s-from s-to)
   "Does not work in this form for alpha=0,1. Not used now."

@@ -252,13 +252,12 @@ Uses also A0 and DEGREE."
         (+ (matrix-ref q 0 0) (* 0+1i (matrix-ref q 1 0)))))))
 
 (define (theta-d->s l theta)
-  (case alpha
-    [(0) (* (- l) (log (- 1 theta)))]
-    [(1) (/ (- (exp (* theta l)) 1) l)]
-    [else (/ (- (expt (+ 1 (* theta l (- alpha 1)))
-                      (/ alpha (- alpha 1)))
-                1)
-             (* l alpha))]))
+  (cond [(= alpha 0) (/ (log (- 1 theta)) (- l))]
+        [(= alpha 1) (/ (- (exp (* theta l)) 1) l)]
+        [else (/ (- (expt (+ 1 (* theta l (- alpha 1)))
+                          (/ alpha (- alpha 1)))
+                    1)
+                 (* l alpha))]))
 
 (define (compute-triangle l theta-d)
   (let* ([p0 0]
@@ -295,13 +294,12 @@ Uses also A0 and DEGREE."
 
 (define (lac-eval-one-point-yoshida l s-from s-to)
   (let* ([theta (lambda (s)
-                  (case alpha
-                    [(0) (- 1 (exp (* -1 l s)))]
-                    [(1) (/ (log (+ (* l s) 1)) l)]
-                    [else (/ (- (expt (+ (* l alpha s) 1)
-                                      (- 1 (/ alpha)))
-                                1)
-                             (* l (- alpha 1)))]))]
+                  (cond [(= alpha 0) (- 1 (exp (* -1 l s)))]
+                        [(= alpha 1) (/ (log (+ (* l s) 1)) l)]
+                        [else (/ (- (expt (+ (* l alpha s) 1)
+                                          (- 1 (/ alpha)))
+                                    1)
+                                 (* l (- alpha 1)))]))]
          [integrand (lambda (s) (exp (* 0+1i (theta s))))])
     (integrate integrand s-from s-to)))
 

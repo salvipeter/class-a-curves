@@ -15,7 +15,7 @@
 (define line-width 0)
 (define resolution 100)
 (define optimization-iterations 100)
-(define bisection-iterations 10)
+(define bisection-iterations 20)
 (define epsilon 1e-5)
 
 ;;; Default placements
@@ -80,9 +80,12 @@
   (< (- (* (first u) (second v)) (* (second u) (first v)))
      0))
 
+(define (angle-between-nosign u v)
+  (acos (min 1 (max -1 (scalar-product (vnormalize u)
+                                       (vnormalize v))))))
+
 (define (angle-between u v)
-  (* (acos (min 1 (max -1 (scalar-product (vnormalize u)
-                                          (vnormalize v)))))
+  (* (angle-between-nosign u v)
      (if (clockwise? u v) -1 1)))
 
 (define (evaluate-polynomial as x)
@@ -209,8 +212,8 @@ Uses also A0 and DEGREE."
 (define (compute-theta-ef l theta-d)
   "Compute THETA-E / THETA-F given Lambda of a Standard Form II curve."
   (let ([tri (compute-triangle l theta-d)])
-    (angle-between (complex->point (- (second tri) (first tri)))
-                   (complex->point (- (third tri) (first tri))))))
+    (angle-between-nosign (complex->point (- (second tri) (first tri)))
+                          (complex->point (- (third tri) (first tri))))))
 
 (define (bisection theta-d theta-e theta-f)
   "As in Appendix A of Yoshida'06."
@@ -269,9 +272,9 @@ Uses also A0 and DEGREE."
 
 (define (lac-fit)
   "Returns (L MAPPING S-FROM S-TO)."
-  (let* ([theta-d (angle-between (v- a1 a0) (v- a2 a1))]
-         [theta-e (angle-between (v- a1 a0) (v- a2 a0))]
-         [theta-f (angle-between (v- a1 a2) (v- a0 a2))]
+  (let* ([theta-d (angle-between-nosign (v- a1 a0) (v- a2 a1))]
+         [theta-e (angle-between-nosign (v- a1 a0) (v- a2 a0))]
+         [theta-f (angle-between-nosign (v- a1 a2) (v- a0 a2))]
          [l (bisection theta-d theta-e theta-f)]
          [tri (compute-triangle l theta-d)])
     (if (> alpha 1)

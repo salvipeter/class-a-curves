@@ -30,8 +30,8 @@ static double solve(const DoubleVector &a) {
   auto D = a[1] * a[1] - 4 * a[0] * a[2];
   assert(D >= 0);
   D = std::sqrt(D);
-  auto x1 = (a[1] - D) / (2 * a[0]);
-  auto x2 = (a[1] + D) / (2 * a[0]);
+  auto x1 = (-a[1] - D) / (2 * a[2]);
+  auto x2 = (-a[1] + D) / (2 * a[2]);
   // If one is negative, return the other
   if (x1 * x2 < 0)
     return x1 < 0 ? x2 : x1;
@@ -53,16 +53,16 @@ static Point2D otherEnd(const Vector2DVector &coeffs, double s) {
 
 static std::pair<double, double> optimize(const Vector2DVector &coeffs, const Vector2D &target) {
   DoubleVector vs;
-  for (auto p : coeffs) {
-    p.normalize();
-    vs.push_back(target * Vector2D(-p[1], p[0]));
-  }
+  Vector2D perp(-target[1], target[0]);
+  perp.normalize();
+  for (const auto &p : coeffs)
+    vs.push_back(p * perp);
   auto s = solve(vs);
   return { s, target.norm() / otherEnd(coeffs, s).norm() };
 }
 
 static Point2DVector generateBezierControls(Point2D p, Vector2D v,
-                                          double s, double alpha, size_t degree) {
+                                            double s, double alpha, size_t degree) {
   Point2DVector result;
   for (size_t i = 0; i <= degree; ++i) {
     result.push_back(p);

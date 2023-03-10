@@ -2,3 +2,5 @@
 .\#*
 *\#
 *.bak
+typical-bezier-test
+*.o
